@@ -79,6 +79,17 @@ FALLBACK_INSIGHT = {
     "recommendation": "Add this segment to SEGMENT_INSIGHTS to get a tailored recommendation.",
 }
 
+# Silhouette scores per K, as computed in notebooks/01_Data_Cleaning.ipynb
+# during model selection (K=2..10, KMeans on log-transformed + scaled RFM
+# features, random_state=42, n_init=10). Kept here as a static reference so
+# the dashboard can show the model-selection reasoning without re-running
+# the clustering sweep at app startup.
+SILHOUETTE_SCORES = {
+    2: 0.4386, 3: 0.3477, 4: 0.3650, 5: 0.3425, 6: 0.3348,
+    7: 0.3066, 8: 0.3033, 9: 0.2925, 10: 0.2905,
+}
+CHOSEN_K = 4
+
 
 # --------------------------------------------------------------------------
 # Data / model loading
@@ -536,6 +547,42 @@ targeted where it has the most impact.
     st.subheader("Pipeline")
     render_pipeline_diagram()
 
+    st.subheader("🔬 Model Selection: Choosing K")
+    st.write(
+        "K-Means needs the number of clusters chosen in advance. Two methods were "
+        "used to evaluate candidate values of K on the log-transformed, scaled RFM features:"
+    )
+
+    k_values = sorted(SILHOUETTE_SCORES.keys())
+    silhouette_df = pd.DataFrame({
+        "K": k_values,
+        "Silhouette Score": [SILHOUETTE_SCORES[k] for k in k_values],
+    })
+
+    mc1, mc2 = st.columns([1.3, 1])
+    with mc1:
+        fig = px.line(
+            silhouette_df, x="K", y="Silhouette Score", markers=True,
+        )
+        fig.add_vline(x=CHOSEN_K, line_dash="dash", line_color=COLORS["VIP Customers"])
+        fig.update_layout(
+            margin=dict(t=10, b=10, l=10, r=10),
+            yaxis_title="Silhouette Score (higher = better separated)",
+        )
+        st.plotly_chart(fig, use_container_width=True)
+    with mc2:
+        st.dataframe(silhouette_df.set_index("K"), use_container_width=True)
+
+    best_k = max(SILHOUETTE_SCORES, key=SILHOUETTE_SCORES.get)
+    st.info(
+        f"**Elbow Method:** the within-cluster sum of squares (WCSS) curve shows a "
+        f"visible bend around K={CHOSEN_K}, after which adding clusters gives diminishing returns.\n\n"
+        f"**Silhouette Score:** K={best_k} scores highest ({SILHOUETTE_SCORES[best_k]:.4f}), but "
+        f"only produces two broad groups — not enough to act on. K={CHOSEN_K} keeps a strong "
+        f"score ({SILHOUETTE_SCORES[CHOSEN_K]:.4f}) while producing segments that map cleanly "
+        f"onto business action (VIP / Regular / At-Risk / Lost), so **K={CHOSEN_K}** was the final choice."
+    )
+
     st.markdown(
         f"""
 ### Tech Stack
@@ -595,13 +642,15 @@ def main():
     try:
         rfm = load_data(DATA_PATH)
         rfm = normalize_columns(rfm)
-        rfm["CustomerID"] = (
-            pd.to_numeric(rfm["CustomerID"], errors="coerce")
-            .astype("Int64")
-        )
+        if "CustomerID" in rfm.columns:
+            # Cast to a clean nullable integer type so lookup can match on
+            # int(customer_id) instead of doing fragile string comparison
+            # against values that may come in as "12345.0" from the CSV.
+            rfm["CustomerID"] = pd.to_numeric(rfm["CustomerID"], errors="coerce").astype("Int64")
     except FileNotFoundError:
         st.error(f"Could not find customer data at `{DATA_PATH}`. Check the file path.")
         st.stop()
+
     missing = REQUIRED_COLS - set(rfm.columns)
     if missing:
         st.error(f"The data is missing expected columns: {', '.join(sorted(missing))}")
