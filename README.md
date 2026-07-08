@@ -5,7 +5,6 @@
 ![Scikit-Learn](https://img.shields.io/badge/Scikit--Learn-Machine%20Learning-orange?logo=scikitlearn)
 ![Streamlit](https://img.shields.io/badge/Streamlit-Dashboard-red?logo=streamlit)
 ![Plotly](https://img.shields.io/badge/Plotly-Visualization-blueviolet?logo=plotly)
-![License](https://img.shields.io/badge/License-MIT-green)
 
 An end-to-end **Data Science** project that segments customers using **RFM Analysis** and **K-Means Clustering** to help businesses understand customer behavior, improve retention, and optimize marketing strategies.
 
@@ -125,8 +124,11 @@ Online Retail II Dataset
 # 📁 Project Structure
 
 ```text
-customer-segmentation-retention-analysis/
+Customer/
 
+│
+├── .streamlit/
+│   └── config.toml
 │
 ├── app/
 │   └── dashboard.py
@@ -140,7 +142,11 @@ customer-segmentation-retention-analysis/
 │   └── scaler.pkl
 │
 ├── notebooks/
-│   └── customer_segmentation.ipynb
+│   ├── 01_Data_Cleaning.ipynb
+│   ├── 02_EDA.ipynb
+│   ├── 03_RFM_Analysis.ipynb
+│   ├── 04_Customer_Segmentation.ipynb
+│   └── 05_Dashboard.ipynb
 │
 ├── screenshots/
 │   ├── dashboard.png
@@ -149,9 +155,41 @@ customer-segmentation-retention-analysis/
 │
 ├── README.md
 ├── requirements.txt
-├── .gitignore
-└── LICENSE
+└── .gitignore
 ```
+
+> **Notebook pipeline:** the project is split across five numbered notebooks
+> that run in order — `01_Data_Cleaning` → `02_EDA` → `03_RFM_Analysis` →
+> `04_Customer_Segmentation` → `05_Dashboard`. Each notebook should only be
+> responsible for its own phase; if earlier notebooks contain later-phase
+> logic (e.g. clustering code inside `01_Data_Cleaning.ipynb`), that logic
+> should be moved to the matching notebook to avoid duplicated, driftable
+> copies of the same code.
+
+### 🧹 Repo cleanup notes
+
+A few things currently in the project folder aren't part of the pipeline
+above and are worth cleaning up before your next commit:
+
+- **`data/Mall_Customers.csv`** — a different, unrelated dataset (not part
+  of this project). Safe to delete unless it's being used for something
+  else.
+- **`data/online_retail_II.xlsx`** — the raw Excel source. Keep only if you
+  need it for reference; the CSV is what the pipeline actually reads.
+- **`models/kmeans.pkl`** — looks like a duplicate/older version of
+  `kmeans_model.pkl`. Only one should be committed; delete the unused one
+  so it's clear which file `dashboard.py` actually loads.
+- **`notebooks/dummy_analysis.ipynb`** — looks like a scratch/test notebook.
+  Either remove it or move it out of `notebooks/` so the pipeline order
+  stays unambiguous.
+- **`test.py`** — not currently documented. If it's a real test suite,
+  add a short "Testing" section below describing how to run it
+  (e.g. `pytest test.py`); otherwise consider removing it.
+- **License badge / file** — the original README referenced an MIT
+  license, but no `LICENSE` file currently exists in the repo. Either add
+  one (e.g. from [choosealicense.com](https://choosealicense.com/licenses/mit/))
+  or drop the license badge until it does — an MIT badge with no `LICENSE`
+  file is a common thing reviewers flag on GitHub.
 
 ---
 
@@ -210,6 +248,15 @@ The optimal number of clusters was determined using:
 - Elbow Method
 - Silhouette Score
 
+## Cluster → Segment Labeling
+
+Cluster IDs produced by K-Means are arbitrary and can shift between runs or
+after retraining. Rather than hardcoding a fixed mapping like
+`{0: "Lost Customers", 1: "Regular Customers", ...}`, both the training
+notebook and the dashboard compute the cluster → business-label mapping at
+runtime from each cluster's RFM profile. This keeps segment labels correct
+even if the underlying model is retrained on new data.
+
 ---
 
 # 📈 Customer Segments
@@ -242,13 +289,14 @@ The model identifies four customer groups.
 The Streamlit dashboard includes:
 
 - 📈 Business KPIs
-- 🌍 Revenue Analysis
+- 📋 Executive Summary
+- 🌍 Revenue Analysis (with tabbed Revenue / Customers / Data views)
 - 👥 Customer Distribution
 - 📊 RFM Analytics
+- 🏆 Top Customers per Segment
 - 🔍 Customer Lookup
 - 🤖 Customer Segment Prediction
 - 📥 CSV Download
-- 📋 Executive Summary
 
 ---
 
