@@ -391,8 +391,22 @@ def page_segments(rfm: pd.DataFrame):
 
     st.write("---")
     st.subheader("🏆 Top Customers")
-    top = seg_df.sort_values("Monetary", ascending=False).head(10)
-    st.dataframe(top, use_container_width=True)
+
+    top = (
+        seg_df.sort_values("Monetary", ascending=False)
+            .head(10)
+            .reset_index(drop=True)
+    )
+
+    st.dataframe(
+        top.style.format({
+            "CustomerID": "{:.0f}",
+            "Recency": "{:.0f}",
+            "Frequency": "{:.0f}",
+            "Monetary": "£{:,.2f}"
+        }),
+        use_container_width=True
+    )
 
     st.write("---")
     st.subheader("🔍 Customer Lookup")
@@ -403,7 +417,12 @@ def page_segments(rfm: pd.DataFrame):
 
     customer_id = st.text_input("Enter Customer ID")
     if customer_id:
-        matches = rfm[rfm["CustomerID"].astype(str) == str(customer_id).strip()]
+        try:
+            cid = int(customer_id.strip())
+            matches = rfm[rfm["CustomerID"] == cid]
+        except ValueError:
+            matches = pd.DataFrame()
+
         if matches.empty:
             st.warning(f"No customer found with ID '{customer_id}'.")
         else:
@@ -575,12 +594,14 @@ def main():
 
     try:
         rfm = load_data(DATA_PATH)
+        rfm = normalize_columns(rfm)
+        rfm["CustomerID"] = (
+            pd.to_numeric(rfm["CustomerID"], errors="coerce")
+            .astype("Int64")
+        )
     except FileNotFoundError:
         st.error(f"Could not find customer data at `{DATA_PATH}`. Check the file path.")
         st.stop()
-
-    rfm = normalize_columns(rfm)
-
     missing = REQUIRED_COLS - set(rfm.columns)
     if missing:
         st.error(f"The data is missing expected columns: {', '.join(sorted(missing))}")
