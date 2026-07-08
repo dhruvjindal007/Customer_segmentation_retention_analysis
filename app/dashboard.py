@@ -12,7 +12,6 @@ import joblib
 import numpy as np
 import pandas as pd
 import plotly.express as px
-import plotly.graph_objects as go
 import streamlit as st
 import streamlit.components.v1 as components
 
@@ -146,6 +145,13 @@ def segment_insight(label: str) -> dict:
     return SEGMENT_INSIGHTS.get(label, FALLBACK_INSIGHT)
 
 
+def revenue_contribution_table(rfm: pd.DataFrame) -> pd.DataFrame:
+    """Revenue per segment, sorted descending, with % contribution."""
+    revenue = rfm.groupby("Segment")["Monetary"].sum().reset_index()
+    revenue["Revenue %"] = (revenue["Monetary"] / revenue["Monetary"].sum() * 100).round(2)
+    return revenue.sort_values("Monetary", ascending=False).reset_index(drop=True)
+
+
 # --------------------------------------------------------------------------
 # Reusable UI components
 # --------------------------------------------------------------------------
@@ -180,6 +186,14 @@ def inject_css():
             border-radius: 8px;
             padding: 12px 14px;
             font-size: 0.92rem;
+        }
+        .app-footer {
+            margin-top: 28px;
+            padding-top: 12px;
+            border-top: 1px solid #E5E7EB;
+            color: #6B7280;
+            font-size: 0.85rem;
+            text-align: center;
         }
         </style>
         """,
@@ -232,14 +246,28 @@ def download_button(df: pd.DataFrame, filename: str, label: str = "📥 Download
     )
 
 
+def render_footer():
+    st.markdown(
+        f"""<div class="app-footer">
+        Developed by {PROJECT_AUTHOR} &nbsp;|&nbsp; Customer Segmentation &amp; Retention Analysis
+        </div>""",
+        unsafe_allow_html=True,
+    )
+
+
 # --------------------------------------------------------------------------
 # Pages
 # --------------------------------------------------------------------------
 
 def page_overview(rfm: pd.DataFrame):
-    st.title("📊 Overview")
-    st.caption("Snapshot of customer base health and segment performance.")
+    st.markdown(
+        """
+        # 📊 Customer Segmentation Dashboard
+        Analyze customer behavior using **RFM Analysis** and **K-Means Clustering**.
+        """
+    )
 
+    st.markdown("## Business KPIs")
     c1, c2, c3, c4 = st.columns(4)
     with c1:
         metric_card("Customers", f"{len(rfm):,}", "👥")
@@ -251,29 +279,41 @@ def page_overview(rfm: pd.DataFrame):
         metric_card("Average Orders", f"{rfm['Frequency'].mean():.1f}", "🔁")
 
     st.write("---")
-    c5, c6 = st.columns(2)
-    with c5:
-        vip = rfm[rfm["Segment"] == "VIP Customers"]
-        st.metric(
-            "VIP Customers",
-            len(vip),
-            f"{len(vip) / len(rfm) * 100:.1f}% of customers" if len(rfm) else None,
-            delta_color="off",
-        )
-    with c6:
-        lost = rfm[rfm["Segment"] == "Lost Customers"]
-        st.metric(
-            "Lost Customers",
-            len(lost),
-            f"{len(lost) / len(rfm) * 100:.1f}% of customers" if len(rfm) else None,
-            delta_color="off",
-        )
+    st.subheader("📋 Executive Summary")
+    total = len(rfm)
+    vip_count = len(rfm[rfm["Segment"] == "VIP Customers"])
+    atrisk_count = len(rfm[rfm["Segment"] == "At-Risk Customers"])
+    lost_count = len(rfm[rfm["Segment"] == "Lost Customers"])
+
+    s1, s2, s3 = st.columns(3)
+    s1.metric("👑 VIP Customers", vip_count, f"{vip_count / total:.1%}" if total else None, delta_color="off")
+    s2.metric("⚠️ At-Risk Customers", atrisk_count, f"{atrisk_count / total:.1%}" if total else None, delta_color="off")
+    s3.metric("💤 Lost Customers", lost_count, f"{lost_count / total:.1%}" if total else None, delta_color="off")
 
     st.write("")
-    col_left, col_right = st.columns(2)
+    tab_revenue, tab_customers, tab_data = st.tabs(["📈 Revenue", "👥 Customers", "📄 Data"])
 
-    with col_left:
-        st.subheader("Customer Distribution by Segment")
+    with tab_revenue:
+        revenue = revenue_contribution_table(rfm)
+
+        fig = px.bar(
+            revenue, x="Segment", y="Monetary", color="Segment",
+            color_discrete_map=COLORS, text_auto=".2s",
+        )
+        fig.update_layout(margin=dict(t=10, b=10, l=10, r=10), showlegend=False, yaxis_title="Revenue (£)")
+        st.plotly_chart(fig, use_container_width=True)
+
+        st.subheader("Revenue Contribution")
+        st.dataframe(revenue, use_container_width=True)
+
+        best = revenue.iloc[0]
+        st.success(
+            f"🏆 **Highest Revenue Segment: {best['Segment']}**  \n"
+            f"Revenue Generated: £{best['Monetary']:,.0f}  \n"
+            f"Contribution: {best['Revenue %']:.2f}%"
+        )
+
+    with tab_customers:
         counts = rfm["Segment"].value_counts().reset_index()
         counts.columns = ["Segment", "Customers"]
         fig = px.pie(
@@ -282,32 +322,20 @@ def page_overview(rfm: pd.DataFrame):
         )
         fig.update_traces(textinfo="percent+label")
         fig.update_layout(margin=dict(t=10, b=10, l=10, r=10), showlegend=True)
-        st.plotly_chart(fig, width='stretch')
+        st.plotly_chart(fig, use_container_width=True)
 
-    with col_right:
-        st.subheader("Revenue by Segment")
-        revenue = rfm.groupby("Segment")["Monetary"].sum().reset_index()
-        fig = px.bar(
-            revenue, x="Segment", y="Monetary", color="Segment",
-            color_discrete_map=COLORS, text_auto=".2s",
-        )
-        fig.update_layout(
-            margin=dict(t=10, b=10, l=10, r=10),
-            showlegend=False, yaxis_title="Revenue (£)",
-        )
-        st.plotly_chart(fig, width='stretch')
+        cc1, cc2 = st.columns(2)
+        with cc1:
+            st.metric("VIP Customers", vip_count, f"{vip_count / total * 100:.1f}% of customers" if total else None, delta_color="off")
+        with cc2:
+            st.metric("Lost Customers", lost_count, f"{lost_count / total * 100:.1f}% of customers" if total else None, delta_color="off")
 
-        st.subheader("Revenue Share")
-        revenue_share = revenue.copy()
-        revenue_share["Percentage"] = (
-            revenue_share["Monetary"] / revenue_share["Monetary"].sum() * 100
-        )
-        st.dataframe(revenue_share.round(2), width='stretch')
+    with tab_data:
+        st.subheader("Full Customer Segmentation Table")
+        st.dataframe(rfm, use_container_width=True, height=320)
+        download_button(rfm, "customer_segments_full.csv", "📥 Download Full Segmentation Report")
 
-    st.write("")
-    st.subheader("Full Customer Segmentation Table")
-    st.dataframe(rfm, width='stretch', height=320)
-    download_button(rfm, "customer_segments_full.csv", "📥 Download Full Segmentation Report")
+    render_footer()
 
 
 def page_eda(rfm: pd.DataFrame):
@@ -320,7 +348,7 @@ def page_eda(rfm: pd.DataFrame):
         nbins=40, marginal="box", opacity=0.85,
     )
     fig.update_layout(margin=dict(t=10, b=10, l=10, r=10))
-    st.plotly_chart(fig, width='stretch')
+    st.plotly_chart(fig, use_container_width=True)
 
     st.subheader("RFM Relationship by Segment")
     fig2 = px.scatter(
@@ -329,11 +357,13 @@ def page_eda(rfm: pd.DataFrame):
         hover_data=["CustomerID"] if "CustomerID" in rfm.columns else None,
     )
     fig2.update_layout(margin=dict(t=10, b=10, l=10, r=10))
-    st.plotly_chart(fig2, width='stretch')
+    st.plotly_chart(fig2, use_container_width=True)
 
     st.subheader("Average RFM per Segment")
     profile = rfm.groupby("Segment")[["Recency", "Frequency", "Monetary"]].mean().round(1)
-    st.dataframe(profile, width='stretch')
+    st.dataframe(profile, use_container_width=True)
+
+    render_footer()
 
 
 def page_segments(rfm: pd.DataFrame):
@@ -349,14 +379,26 @@ def page_segments(rfm: pd.DataFrame):
         avg_recency=seg_df["Recency"].mean(),
     )
 
+    st.subheader("Segment Statistics")
+    c1, c2, c3 = st.columns(3)
+    c1.metric("Average Revenue", f"£{seg_df['Monetary'].mean():,.0f}")
+    c2.metric("Average Orders", f"{seg_df['Frequency'].mean():.1f}")
+    c3.metric("Average Recency", f"{seg_df['Recency'].mean():.0f} days")
+
     st.subheader(f"Customers in {segment} ({len(seg_df):,})")
-    st.dataframe(seg_df, width='stretch', height=320)
+    st.dataframe(seg_df, use_container_width=True, height=320)
     download_button(seg_df, f"{segment.replace(' ', '_').lower()}.csv", f"📥 Download {segment} List")
+
+    st.write("---")
+    st.subheader("🏆 Top Customers")
+    top = seg_df.sort_values("Monetary", ascending=False).head(10)
+    st.dataframe(top, use_container_width=True)
 
     st.write("---")
     st.subheader("🔍 Customer Lookup")
     if "CustomerID" not in rfm.columns:
         st.info("No CustomerID column found in the data — lookup is unavailable.")
+        render_footer()
         return
 
     customer_id = st.text_input("Enter Customer ID")
@@ -366,14 +408,14 @@ def page_segments(rfm: pd.DataFrame):
             st.warning(f"No customer found with ID '{customer_id}'.")
         else:
             row = matches.iloc[0]
-            c1, c2, c3, c4 = st.columns(4)
-            with c1:
+            l1, l2, l3, l4 = st.columns(4)
+            with l1:
                 metric_card("Segment", str(row["Segment"]), segment_insight(row["Segment"])["icon"])
-            with c2:
+            with l2:
                 metric_card("Revenue", f"£{row['Monetary']:,.0f}", "💰")
-            with c3:
+            with l3:
                 metric_card("Frequency", f"{row['Frequency']:.0f}", "🔁")
-            with c4:
+            with l4:
                 metric_card("Recency", f"{row['Recency']:.0f} days", "⏱️")
 
             score = (
@@ -388,6 +430,8 @@ def page_segments(rfm: pd.DataFrame):
                 "quick visual comparison, not an ML-derived score."
             )
 
+    render_footer()
+
 
 def page_prediction(rfm: pd.DataFrame, kmeans, scaler):
     st.title("🤖 Predict Customer Segment")
@@ -395,24 +439,29 @@ def page_prediction(rfm: pd.DataFrame, kmeans, scaler):
 
     cluster_map = compute_cluster_to_label_map(rfm, kmeans, scaler)
 
-    c1, c2, c3 = st.columns(3)
-    with c1:
+    left, right = st.columns([1, 1.2])
+
+    with left:
+        st.subheader("Customer Inputs")
         recency = st.number_input("Recency (days since last order)", min_value=0, value=30)
-    with c2:
         frequency = st.number_input("Frequency (number of orders)", min_value=0, value=5)
-    with c3:
         monetary = st.number_input("Monetary (total spend, £)", min_value=0.0, value=500.0)
+        predict_clicked = st.button("Predict Segment", type="primary")
 
-    if st.button("Predict Segment", type="primary"):
-        sample = np.array([[np.log1p(recency), np.log1p(frequency), np.log1p(monetary)]])
-        scaled = scaler.transform(sample)
-        cluster_id = int(kmeans.predict(scaled)[0])
-        label = cluster_map.get(cluster_id, f"Cluster {cluster_id}")
+    with right:
+        st.subheader("Result")
+        if predict_clicked:
+            sample = np.array([[np.log1p(recency), np.log1p(frequency), np.log1p(monetary)]])
+            scaled = scaler.transform(sample)
+            cluster_id = int(kmeans.predict(scaled)[0])
+            label = cluster_map.get(cluster_id, f"Cluster {cluster_id}")
 
-        render_segment_card(label, avg_monetary=monetary, avg_frequency=frequency, avg_recency=recency)
+            render_segment_card(label, avg_monetary=monetary, avg_frequency=frequency, avg_recency=recency)
 
-        st.write("### Suggested Marketing Action")
-        st.success(segment_insight(label)["recommendation"])
+            st.write("### Business Recommendation")
+            st.info(segment_insight(label)["recommendation"])
+        else:
+            st.caption("Fill in the inputs on the left and click **Predict Segment** to see the result here.")
 
     with st.expander("How does this mapping stay correct after retraining?"):
         st.write(
@@ -422,6 +471,8 @@ def page_prediction(rfm: pd.DataFrame, kmeans, scaler):
             "Retrain the model and drop in a new `.pkl`, and the labels stay correct."
         )
         st.json({str(k): v for k, v in cluster_map.items()})
+
+    render_footer()
 
 
 def render_pipeline_diagram():
@@ -484,6 +535,7 @@ win-back campaigns for At-Risk customers, and reduced spend on Lost customers.
 **Author:** {PROJECT_AUTHOR}
         """
     )
+    render_footer()
 
 
 # --------------------------------------------------------------------------
@@ -493,14 +545,29 @@ win-back campaigns for At-Risk customers, and reduced spend on Lost customers.
 def main():
     inject_css()
 
-    st.sidebar.title("📊 Segmentation Dashboard")
-    page = st.sidebar.radio(
-        "Navigate",
-        ["📊 Dashboard", "📈 EDA", "👥 Segments", "🤖 Prediction", "ℹ️ About"],
-        label_visibility="collapsed",
-    )
-    st.sidebar.write("---")
-    st.sidebar.caption("RFM Analysis + K-Means Clustering")
+    with st.sidebar:
+        st.title("📊 Customer Analytics")
+        st.caption("Customer Segmentation & Retention")
+
+        page = st.radio(
+            "Navigate",
+            ["📊 Dashboard", "📈 EDA", "👥 Segments", "🤖 Prediction", "ℹ️ About"],
+            label_visibility="collapsed",
+        )
+
+        st.divider()
+        st.markdown(
+            """
+            **Tech Stack**
+            - Python
+            - Pandas
+            - Scikit-Learn
+            - Plotly
+            - Streamlit
+            """
+        )
+        st.divider()
+        st.caption("RFM Analysis + K-Means Clustering")
 
     if page == "ℹ️ About":
         page_about()
