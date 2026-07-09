@@ -332,7 +332,6 @@ Clone the repository
 git clone https://github.com/dhruvjindal007/Customer_segmentation_retention_analysis.git
 ```
 
-```
 Create a virtual environment
 
 ```bash
