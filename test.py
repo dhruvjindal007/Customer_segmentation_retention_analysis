@@ -24,7 +24,7 @@ import pytest
 sys.path.insert(0, str(Path(__file__).parent))
 sys.path.insert(0, str(Path(__file__).parent / "app"))
 
-import dashboard as dash  # noqa: E402
+import app.dashboard as dash  # noqa: E402
 
 
 # --------------------------------------------------------------------------
